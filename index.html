@@ -1,0 +1,372 @@
+<!doctype html>
+<html lang="en">
+
+    <head>
+        <meta charset="UTF-8">
+        <title>Expense Tracker</title>
+        
+        <!-- Third-party CSS files -->
+        <link href="bootstrap.min.css" rel="stylesheet" />
+
+        <!-- Custom CSS --> 
+        <style>
+            input.ng-invalid {
+                border: 1px solid red;
+            }
+        </style>
+        
+        
+    </head>
+
+    <body ng-app="et2">
+        <div ng-controller="et2Controller" class="container pull-left">
+
+            <h4>Expense Tracker  <small>Enter expense record details</small></h4>
+            <hr/>
+
+            <form name="frmExpense" class="form-horizontal" role="form">
+
+                <div class="form-group" >
+                    <label class="col-sm-2 control-label" for="expDate">Date</label>
+                    <div class="col-sm-2">                        
+                        <div class="input-group">                        
+                            <!-- note: type=date not recognized by all browsers, e.g. FF,IE -->
+                            <input type="text" class="form-control" name="expDate" id="expDate" readonly ng-model="expense.Date" 
+                                   datepicker-popup="{{format}}" datepicker-options="dateOptions" required is-open="opened" date-disabled="false" close-text="Close" />
+                            <span class="input-group-addon">
+                                <span class="glyphicon glyphicon-calendar" ng-click="open($event)"></span>                                                                   
+                            </span>                            
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-group" ng-class="{ 'has-error': frmExpense.expCategory.$error.required }">
+                    <label class="col-sm-2 control-label" for="expCategory">Category</label>
+                    <div class="col-sm-2">
+                        <select id="expCategory" name="expCategory" class="form-control" ng-model="expense.Category" required 
+                                ng-options="category.code as category.desc for category in categoryList">
+                            <option value="">Select category...</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-group" ng-class="{ 'has-error': frmExpense.expAmount.$error.required || frmExpense.expAmount.$error.pattern }" >
+                    <label class="col-sm-2 control-label" for="expAmount">Amount</label>
+                    <div class="col-sm-2">
+                        <input type="text" class="form-control" id="expAmount" name="expAmount" ng-model="expense.Amount" ng-pattern="amountPattern" required />
+                    </div>
+                </div>
+
+                <div class="form-group" ng-class="{ 'has-error': frmExpense.expComment.$error.required || frmExpense.expComment.$error.maxlength}">
+                    <label class="col-sm-2 control-label" for="expComment">Comment</label>
+                    <div class="col-sm-4">
+                        <input type="text" class="form-control" id="expComment" name="expComment" ng-model="expense.Comment" required ng-maxlength="45" />
+                    </div>
+                </div>
+
+                <div class="form-group" ng-class="{ 'has-error': frmExpense.expPaidBy.$error.required }">
+                    <label class="col-sm-2 control-label" for="expPaidBy">Paid By</label>
+                    <div class="col-sm-2">
+                        <select id="expPaidBy" name="expPaidBy" class="form-control" ng-model="expense.PaidBy" required 
+                                ng-options="paidBy.code as paidBy.desc for paidBy in paidByList">
+                            <option value="">Select paid by...</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <div class="col-sm-offset-2 col-sm-10">
+                        <button ng-click="save()" class="btn btn-default btn-primary" ng-disabled="frmExpense.$invalid">Save Expense Record</button>
+                    </div>
+                </div>
+
+            </form>
+
+            <!-- handy to show what form json looks like -->
+            <!-- <pre>form = {{expense | json}}</pre> -->            
+            
+            <!-- DIVs for success/failure alerts -->
+            <div ng-cloak class="ng-cloak alert alert-success col-sm-offset-2 col-sm-4" ng-show="showSuccessAlert">
+                <button type="button" class="close" ng-click="switchBoolean('showSuccessAlert')">×</button> 
+                <strong>Expense record saved</strong>
+            </div>
+            <div ng-cloak class="ng-cloak alert alert-danger col-sm-offset-2 col-sm-4" ng-show="showDangerAlert">
+                <button type="button" class="close" ng-click="switchBoolean('showDangerAlert')">×</button> 
+                <strong>Expense record was not saved</strong>
+            </div>
+
+            <hr/>
+
+            <div class="col-sm-12">
+                <button ng-click="openDialog(1)" class="btn btn-default">List All Expenses</button>
+                <button ng-click="openDialog(2)" class="btn btn-default">Compare To Budget</button>
+                <button ng-click="openDialog(3)" class="btn btn-default">Prepare Budget</button>
+                <button ng-click="openDialog(4)" class="btn btn-default">Back-Up</button>
+            </div>
+
+        </div>
+
+        <!-- Third-party Javascript files -->
+        <script src="angular.js"></script>
+        <script src="ui-bootstrap-tpls.min.js"></script>  
+
+        <!-- Custom Javascript -->
+        <script>
+            
+            angular.module('et2', ['ui.bootstrap']);
+            
+            var et2Controller = function ($scope,$http,$filter,$modal) {
+                
+                $scope.expense = {};
+                
+                $scope.showSuccessAlert = false;
+                $scope.showDangerAlert = false;
+                                                
+                // initialise date field & datepicker options
+                $scope.today = function() {
+                    $scope.expense.Date = new Date();
+                };
+                $scope.today();
+                $scope.clear = function () {
+                    $scope.expense.Date = null;
+                };
+                $scope.open = function($event) {
+                    $event.preventDefault();
+                    $event.stopPropagation();
+                    $scope.opened = true;
+                };
+                $scope.dateOptions = {
+                    formatYear: 'yy',
+                    startingDay: 0  // week starts Sunday
+                };                
+                $scope.format = 'yyyy-MM-dd';
+                
+                // regex pattern for amount field
+                $scope.amountPattern = /^\d{1,4}(\.\d{1,2})?$/;  // 0000.00
+                 
+                // initialise paid-by drop-down list
+                $scope.expPaidBy = null;
+                $http({
+                    method: 'GET',
+                    url: 'backend/getPaidByList.php',
+                    data: { }
+                }).success(function (result) {
+                    $scope.paidByList = result;
+                });
+
+                // initialise categories drop-down list
+                $scope.expCategory = null;                                
+                $http({
+                    method: 'GET',
+                    url: 'backend/getCategoryList.php',
+                    data: { }
+                }).success(function (result) {
+                    $scope.categoryList = result;
+                    //console.log(result);
+                });
+                
+                // initialise some modal parm defaults
+                var t = new Date();
+                $scope.month = t.getMonth()+1;
+                $scope.year = t.getFullYear();
+                //$scope.categories = $scope.categoryList;
+                //{"code":"ALL","desc":"All Categories"}
+                                
+                $scope.switchBoolean = function (value) {
+                    $scope[value] = !$scope[value];
+                };
+
+                // AJAX call to save expense record
+                $scope.save = function() {
+                    $scope.expense.DateStr = $filter('date')($scope.expense.Date,'yyyy-MM-dd');
+                    $http({
+                        method: 'POST',
+                        url: 'backend/saveExpense.php',
+                        data: $scope.expense
+                    }).success(function (result) {                        
+                        if (result) {
+                            $scope.expense = {};   // clear form fields
+                            $scope.today();        // set date field
+                            $scope.showSuccessAlert = true;
+                            $scope.showDangerAlert  = false;
+                        } else {
+                            $scope.showSuccessAlert = false;
+                            $scope.showDangerAlert  = true;
+                        }                        
+                    });
+                };
+
+                $scope.openDialog = function(n) {    // refer: http://plnkr.co/edit/D29YjKGbY63OSa1EeixT?p=preview
+                    //console.log('openDialog '+n);
+                    if (n===1) {    
+                        // dialog options    
+                        $scope.opts = {
+                            backdrop: true,
+                            backdropClick: true,
+                            dialogFade: false,
+                            keyboard: false,
+                            size: 'lg',
+                            templateUrl : 'views/listExpenses.html',
+                            controller : ModalInstanceCtrl,
+                            resolve: {} // empty storage
+                        };
+                        // resolve what's being passed in
+                        $scope.opts.resolve.item = function() {
+                            var all = [{code:"ALL",desc:"ALL"}];
+                            return angular.copy({
+                                month : $scope.month.toString(),
+                                year : $scope.year.toString(),
+                                categoryList : all.concat($scope.categoryList),
+                                category : 'ALL',
+                                expenseList : null,
+                                showDropdowns: true
+                            }); // pass to dialog
+                        };
+                        // open the modal dialog
+                        var modalInstance = $modal.open($scope.opts);
+                        modalInstance.result.then(function(){
+                            //on ok button press 
+                        },function(){
+                            //on cancel button press
+                            //console.log("modal closed");
+                        });
+      
+                    } // if n===1
+                    
+                    if (n===2) {
+                                                
+                        $scope.opts = {
+                            backdrop: true,
+                            backdropClick: true,
+                            dialogFade: false,
+                            keyboard: false,
+                            size: 'lg',
+                            templateUrl : 'views/compareBudget.html',
+                            controller : ModalInstanceCtrl,
+                            resolve: {} 
+                        };
+                        
+                        $scope.opts.resolve.item = function() {                          
+                            return angular.copy({
+                                month : $scope.month.toString(),
+                                year : $scope.year.toString(),                                
+                                compareList : null
+                            });
+                        };
+                        
+                        var modalInstance = $modal.open($scope.opts);
+                        
+                    }  // if n===2
+                };
+                
+                $scope.listExpenses = function() {
+                    //console.log('list expenses (in dialog) for::');
+                    //console.log($scope.item.month);
+                    //console.log($scope.item.year);
+                    //console.log($scope.item.category);
+                                       
+                    $http({
+                        method: 'POST',
+                        url: 'backend/getExpenseList.php',
+                        data: $scope.item
+                    }).success(function (result) {                        
+                        if (result) {
+                            var resultTotal = 0;
+                            result.forEach(function(exp) {
+                                resultTotal += parseFloat(exp.amount);
+                            });                
+                            $scope.item.expenseList = result;
+                            $scope.item.expenseTotal = resultTotal;
+                        } else {
+                            console.log('getExpenseList failed');
+                        }                        
+                    });  // http                  
+                    
+                };   // listExpenses function
+                
+                $scope.compareBudget = function() {
+                    console.log('compareBudget (in dialog) for::');
+                    console.log($scope.item.month);
+                    console.log($scope.item.year);
+                    
+                    $http({
+                        method: 'POST',
+                        url: 'backend/compareBudget.php',
+                        data: $scope.item
+                    }).success(function (result) {                        
+                        if (result) {                            
+                            var resultTotalBudgeted = 0;
+                            var resultTotalActual = 0;
+                            result.forEach(function(comp) {
+                                resultTotalBudgeted += parseFloat(comp.budgeted);
+                                resultTotalActual += parseFloat(comp.actual);
+                            }); 
+                            $scope.item.compareList = result;                            
+                            $scope.item.compareTotalBudgeted = resultTotalBudgeted;
+                            $scope.item.compareTotalActual = resultTotalActual;
+                            if (resultTotalActual > resultTotalBudgeted) {
+                                $scope.item.compareTotalStatus = 'over';                                                                
+                            } else {
+                                $scope.item.compareTotalStatus = 'ok';
+                            }                            
+                        } else {
+                            console.log('compareBudget failed');
+                        }                        
+                    });  // http                                       
+                    
+                };   // compareBudget function
+
+            }; // var et2Controller
+            
+            var ModalInstanceCtrl = function($scope, $modalInstance, $modal, item) {
+                $scope.item = item;   
+                //console.log($scope.item.categoryList);
+                $scope.close = function () {
+                    $modalInstance.dismiss('cancel');
+                };
+                
+                $scope.openSubDialog = function(mth,yr,cat) {
+                    console.log('in openSubDialog()::'+mth+yr+cat);  
+                    
+                    /*
+                    // @TODO fetch expense list first ???
+                                        
+                    // sub-dialog options    
+                    $scope.opts = {
+                        backdrop: true,
+                        backdropClick: true,
+                        dialogFade: false,
+                        keyboard: false,
+                        size: 'lg',
+                        templateUrl : 'views/listExpenses.html',
+                        controller : SubModalInstanceCtrl,
+                        resolve: {} // empty storage
+                    };
+                    // resolve what's being passed in
+                    $scope.opts.resolve.item = function() {
+                        return angular.copy({
+                            month : mth,
+                            year : yr,
+                            category : cat,
+                            expenseList : null,
+                            showDropdowns: false
+                        }); // pass to dialog
+                    };
+                    // open the modal sub-dialog
+                    var subModalInstance = $modal.open($scope.opts);
+                    */
+                };  // openSubDialog()
+                
+            }; // var ModalInstanceCtrl
+            
+            var SubModalInstanceCtrl = function($scope, $modalInstance, $modal, item) {
+                $scope.item = item;   
+                $scope.close = function () {
+                    $modalInstance.dismiss('cancel');
+                };
+            };  // var SubModalInstanceCtrl
+            
+        </script>
+    </body>
+
+</html>
